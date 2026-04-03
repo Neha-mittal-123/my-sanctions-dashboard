@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sanctions Dashboard</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0d1117;
+      --surface:   #161b22;
+      --border:    #30363d;
+      --text:      #e6edf3;
+      --muted:     #8b949e;
+      --accent:    #58a6ff;
+      --ship:      #3fb950;
+      --plane:     #d29922;
+      --danger:    #f85149;
+      --row-hover: #1c2128;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── header ── */
+    header {
+      padding: 20px 32px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    header h1 { font-size: 1.25rem; font-weight: 600; }
+    header span { font-size: 0.8rem; color: var(--muted); margin-left: auto; }
+    #last-updated { color: var(--accent); }
+
+    /* ── main layout ── */
+    main { padding: 24px 32px; max-width: 1600px; margin: 0 auto; }
+
+    /* ── summary cards ── */
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 18px 20px;
+    }
+    .card-label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 8px; }
+    .card-value { font-size: 2rem; font-weight: 700; line-height: 1; }
+    .card-value.ships  { color: var(--ship); }
+    .card-value.planes { color: var(--plane); }
+    .card-value.total  { color: var(--accent); }
+    .card-value.countries { color: #bc8cff; }
+
+    /* ── filters ── */
+    .filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 20px;
+      align-items: center;
+    }
+    .filters input, .filters select {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      padding: 7px 12px;
+      font-size: 0.875rem;
+      outline: none;
+    }
+    .filters input:focus, .filters select:focus { border-color: var(--accent); }
+    .filters input[type="search"] { width: 260px; }
+    .filters select option { background: var(--surface); }
+    .filter-count { font-size: 0.8rem; color: var(--muted); margin-left: auto; }
+
+    /* ── table wrapper ── */
+    .table-wrap {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    thead th {
+      background: #1c2128;
+      color: var(--muted);
+      font-weight: 600;
+      text-transform: uppercase;
+      font-size: 0.72rem;
+      letter-spacing: .05em;
+      padding: 11px 14px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+      cursor: pointer;
+      user-select: none;
+    }
+    thead th:hover { color: var(--text); }
+    thead th.sorted-asc::after  { content: " ▲"; font-size: 0.65rem; }
+    thead th.sorted-desc::after { content: " ▼"; font-size: 0.65rem; }
+
+    tbody tr { border-bottom: 1px solid var(--border); }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: var(--row-hover); }
+    tbody td { padding: 10px 14px; vertical-align: middle; }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: .03em;
+    }
+    .badge-ship  { background: #1a3a22; color: var(--ship); }
+    .badge-plane { background: #3a2e0a; color: var(--plane); }
+
+    .tag {
+      display: inline-block;
+      background: #21262d;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1px 6px;
+      font-size: 0.72rem;
+      color: var(--muted);
+      margin: 1px 2px 1px 0;
+    }
+
+    .flag { font-size: 1rem; }
+    .mono { font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.8rem; color: var(--accent); }
+    .null { color: var(--border); font-style: italic; }
+
+    /* ── pagination ── */
+    .pagination {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 16px;
+      border-top: 1px solid var(--border);
+    }
+    .pagination button {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      padding: 5px 12px;
+      font-size: 0.8rem;
+      cursor: pointer;
+    }
+    .pagination button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+    .pagination button:disabled { opacity: 0.35; cursor: default; }
+    .pagination .page-info { font-size: 0.8rem; color: var(--muted); min-width: 130px; text-align: center; }
+
+    /* ── loading / error ── */
+    .state-msg {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--muted);
+    }
+    .state-msg.error { color: var(--danger); }
+    .spinner {
+      display: inline-block;
+      width: 32px; height: 32px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+      margin-bottom: 12px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+<header>
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+  </svg>
+  <h1>Sanctions Dashboard</h1>
+  <span>Last updated: <span id="last-updated">—</span></span>
+</header>
+
+<main>
+  <div class="cards">
+    <div class="card">
+      <div class="card-label">Total Entities</div>
+      <div class="card-value total" id="stat-total">—</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Ships</div>
+      <div class="card-value ships" id="stat-ships">—</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Planes</div>
+      <div class="card-value planes" id="stat-planes">—</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Countries</div>
+      <div class="card-value countries" id="stat-countries">—</div>
+    </div>
+  </div>
+
+  <div class="filters">
+    <input type="search" id="search" placeholder="Search name, IMO, reg…" />
+    <select id="filter-type">
+      <option value="">All types</option>
+      <option value="ship">Ships only</option>
+      <option value="plane">Planes only</option>
+    </select>
+    <select id="filter-flag">
+      <option value="">All flags</option>
+    </select>
+    <select id="filter-dataset">
+      <option value="">All datasets</option>
+    </select>
+    <span class="filter-count" id="filter-count"></span>
+  </div>
+
+  <div id="content">
+    <div class="state-msg">
+      <div class="spinner"></div>
+      <div>Loading sanctions data…</div>
+    </div>
+  </div>
+</main>
+
+<script>
+const PAGE_SIZE = 50;
+const COUNTRY_NAMES = new Intl.DisplayNames(['en'], { type: 'region' });
+
+function countryName(code) {
+  if (!code) return null;
+  try { return COUNTRY_NAMES.of(code.toUpperCase()); }
+  catch { return code.toUpperCase(); }
+}
+
+function flagEmoji(code) {
+  if (!code || code.length !== 2) return '';
+  return String.fromCodePoint(
+    ...code.toUpperCase().split('').map(c => 0x1F1E6 + c.charCodeAt(0) - 65)
+  );
+}
+
+// ── state ─────────────────────────────────────────────────────────────────────
+let allRecords = [];
+let filtered   = [];
+let sortKey    = 'name';
+let sortDir    = 1; // 1 asc, -1 desc
+let page       = 0;
+
+// ── fetch ─────────────────────────────────────────────────────────────────────
+async function load() {
+  try {
+    const res  = await fetch('/api/sanctions');
+    const data = await res.json();
+
+    if (data.error) throw new Error(data.error);
+
+    allRecords = data.records;
+
+    // summary cards
+    document.getElementById('stat-total').textContent   = allRecords.length.toLocaleString();
+    document.getElementById('stat-ships').textContent   = allRecords.filter(r => r.type === 'ship').length.toLocaleString();
+    document.getElementById('stat-planes').textContent  = allRecords.filter(r => r.type === 'plane').length.toLocaleString();
+    document.getElementById('stat-countries').textContent = new Set(
+      allRecords.map(r => r.flag).filter(Boolean)
+    ).size.toLocaleString();
+    document.getElementById('last-updated').textContent =
+      new Date(data.fetchedAt).toLocaleString();
+
+    populateFilterDropdowns();
+    applyFilters();
+  } catch (err) {
+    document.getElementById('content').innerHTML =
+      `<div class="state-msg error">Failed to load data: ${err.message}</div>`;
+  }
+}
+
+// ── dropdowns ─────────────────────────────────────────────────────────────────
+function populateFilterDropdowns() {
+  const flags    = [...new Set(allRecords.map(r => r.flag).filter(Boolean))].sort();
+  const datasets = [...new Set(allRecords.flatMap(r => r.sourceDataset))].sort();
+
+  const flagSel = document.getElementById('filter-flag');
+  flags.forEach(f => {
+    const opt = document.createElement('option');
+    opt.value = f;
+    opt.textContent = `${flagEmoji(f)} ${countryName(f) || f.toUpperCase()}`;
+    flagSel.appendChild(opt);
+  });
+
+  const dsSel = document.getElementById('filter-dataset');
+  datasets.forEach(d => {
+    const opt = document.createElement('option');
+    opt.value = d;
+    opt.textContent = d;
+    dsSel.appendChild(opt);
+  });
+}
+
+// ── filtering ─────────────────────────────────────────────────────────────────
+function applyFilters() {
+  const q       = document.getElementById('search').value.trim().toLowerCase();
+  const type    = document.getElementById('filter-type').value;
+  const flag    = document.getElementById('filter-flag').value;
+  const dataset = document.getElementById('filter-dataset').value;
+
+  filtered = allRecords.filter(r => {
+    if (type    && r.type !== type)                         return false;
+    if (flag    && r.flag !== flag)                         return false;
+    if (dataset && !r.sourceDataset.includes(dataset))     return false;
+    if (q) {
+      const haystack = [r.name, r.imoNumber, r.registrationNumber,
+                        ...(r.sanctioningAuthority || [])].join(' ').toLowerCase();
+      if (!haystack.includes(q)) return false;
+    }
+    return true;
+  });
+
+  sortFiltered();
+  page = 0;
+  document.getElementById('filter-count').textContent =
+    `${filtered.length.toLocaleString()} result${filtered.length !== 1 ? 's' : ''}`;
+  render();
+}
+
+// ── sorting ───────────────────────────────────────────────────────────────────
+function sortFiltered() {
+  filtered.sort((a, b) => {
+    let av = a[sortKey] ?? '';
+    let bv = b[sortKey] ?? '';
+    if (Array.isArray(av)) av = av[0] ?? '';
+    if (Array.isArray(bv)) bv = bv[0] ?? '';
+    return av < bv ? -sortDir : av > bv ? sortDir : 0;
+  });
+}
+
+function setSort(key) {
+  if (sortKey === key) sortDir *= -1;
+  else { sortKey = key; sortDir = 1; }
+  sortFiltered();
+  page = 0;
+  render();
+}
+
+// ── render ────────────────────────────────────────────────────────────────────
+const COLS = [
+  { key: 'name',                 label: 'Name' },
+  { key: 'type',                 label: 'Type' },
+  { key: 'flag',                 label: 'Flag' },
+  { key: 'imoNumber',            label: 'IMO' },
+  { key: 'registrationNumber',   label: 'Reg #' },
+  { key: 'sanctioningAuthority', label: 'Authority' },
+  { key: 'sanctionDate',         label: 'Sanction Date' },
+  { key: 'sourceDataset',        label: 'Dataset' },
+];
+
+function cell(record, key) {
+  const v = record[key];
+  switch (key) {
+    case 'type':
+      return `<span class="badge badge-${v}">${v === 'ship' ? '⛴ ship' : '✈ plane'}</span>`;
+    case 'flag':
+      return v
+        ? `<span title="${countryName(v) || ''}">${flagEmoji(v)} <small>${v.toUpperCase()}</small></span>`
+        : `<span class="null">—</span>`;
+    case 'imoNumber':
+    case 'registrationNumber':
+      return v ? `<span class="mono">${v}</span>` : `<span class="null">—</span>`;
+    case 'sanctioningAuthority':
+      return Array.isArray(v) && v.length
+        ? v.map(t => `<span class="tag">${t}</span>`).join('')
+        : `<span class="null">—</span>`;
+    case 'sanctionDate':
+      return v || `<span class="null">—</span>`;
+    case 'sourceDataset':
+      return Array.isArray(v) && v.length
+        ? v.map(t => `<span class="tag">${t}</span>`).join('')
+        : `<span class="null">—</span>`;
+    default:
+      return v ? escHtml(String(v)) : `<span class="null">—</span>`;
+  }
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function render() {
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  if (page >= totalPages) page = totalPages - 1;
+
+  const slice = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+
+  const thead = `<thead><tr>${
+    COLS.map(c => `<th data-key="${c.key}" class="${
+      sortKey === c.key ? (sortDir === 1 ? 'sorted-asc' : 'sorted-desc') : ''
+    }">${c.label}</th>`).join('')
+  }</tr></thead>`;
+
+  const tbody = slice.length
+    ? `<tbody>${slice.map(r =>
+        `<tr>${COLS.map(c => `<td>${cell(r, c.key)}</td>`).join('')}</tr>`
+      ).join('')}</tbody>`
+    : `<tbody><tr><td colspan="${COLS.length}" style="text-align:center;padding:40px;color:var(--muted)">No records match your filters.</td></tr></tbody>`;
+
+  const pagination = `
+    <div class="pagination">
+      <button id="btn-first" ${page === 0 ? 'disabled' : ''}>« First</button>
+      <button id="btn-prev"  ${page === 0 ? 'disabled' : ''}>‹ Prev</button>
+      <span class="page-info">Page ${page + 1} of ${totalPages}</span>
+      <button id="btn-next"  ${page >= totalPages - 1 ? 'disabled' : ''}>Next ›</button>
+      <button id="btn-last"  ${page >= totalPages - 1 ? 'disabled' : ''}>Last »</button>
+    </div>`;
+
+  document.getElementById('content').innerHTML =
+    `<div class="table-wrap"><table>${thead}${tbody}</table>${pagination}</div>`;
+
+  // table sort listeners
+  document.querySelectorAll('thead th').forEach(th => {
+    th.addEventListener('click', () => setSort(th.dataset.key));
+  });
+
+  // pagination listeners
+  document.getElementById('btn-first').addEventListener('click', () => { page = 0; render(); });
+  document.getElementById('btn-prev').addEventListener('click',  () => { page--; render(); });
+  document.getElementById('btn-next').addEventListener('click',  () => { page++; render(); });
+  document.getElementById('btn-last').addEventListener('click',  () => { page = Math.ceil(filtered.length / PAGE_SIZE) - 1; render(); });
+}
+
+// ── wire up filters ───────────────────────────────────────────────────────────
+['search', 'filter-type', 'filter-flag', 'filter-dataset'].forEach(id => {
+  document.getElementById(id).addEventListener('input', applyFilters);
+});
+
+load();
+</script>
+</body>
+</html>
