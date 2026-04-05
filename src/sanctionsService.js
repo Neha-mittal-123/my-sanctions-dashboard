@@ -143,7 +143,21 @@ async function getSanctions() {
   const [vessels, airplanes] = await Promise.all([fetchVessels(), fetchAirplanes()]);
   console.log(`Fetched ${vessels.length} vessels, ${airplanes.length} airplanes — writing to DB...`);
 
-  const records = [...vessels, ...airplanes];
+  // merge duplicate ids — collect all IMO numbers for vessels that appear more than once
+  const byId = new Map();
+  for (const r of [...vessels, ...airplanes]) {
+    if (byId.has(r.id)) {
+      const existing = byId.get(r.id);
+      if (r.imoNumber && !existing.imoNumber?.split(',').includes(r.imoNumber)) {
+        existing.imoNumber = existing.imoNumber
+          ? `${existing.imoNumber},${r.imoNumber}`
+          : r.imoNumber;
+      }
+    } else {
+      byId.set(r.id, { ...r });
+    }
+  }
+  const records = [...byId.values()];
   await db.upsertRecords(records);
   console.log('DB write complete.');
 
