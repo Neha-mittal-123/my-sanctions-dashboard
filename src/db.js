@@ -35,7 +35,7 @@ async function upsertRecords(records) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query('TRUNCATE TABLE sanctions');
+    await client.query('DELETE FROM sanctions');
 
     const BATCH = 500;
     for (let i = 0; i < records.length; i += BATCH) {
