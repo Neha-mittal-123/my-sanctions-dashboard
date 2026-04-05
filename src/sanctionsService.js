@@ -1,31 +1,11 @@
 const https = require('https');
 const http = require('http');
 const readline = require('readline');
-const fs = require('fs');
-const path = require('path');
 const { parse } = require('csv-parse');
+const db = require('./db');
 
-const CACHE_FILE = path.join(__dirname, '../cache/sanctions.json');
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
 const INDEX_BASE = 'https://data.opensanctions.org/datasets/latest';
-
-// ── cache ─────────────────────────────────────────────────────────────────────
-
-function readCache() {
-  try {
-    const raw = fs.readFileSync(CACHE_FILE, 'utf8');
-    const cache = JSON.parse(raw);
-    if (Date.now() - cache.fetchedAt < CACHE_TTL_MS) return cache;
-  } catch { /* missing or corrupt */ }
-  return null;
-}
-
-function writeCache(records) {
-  fs.mkdirSync(path.dirname(CACHE_FILE), { recursive: true });
-  const payload = { records, fetchedAt: Date.now() };
-  fs.writeFileSync(CACHE_FILE, JSON.stringify(payload));
-  return payload;
-}
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -33,7 +13,6 @@ function first(arr) {
   return Array.isArray(arr) && arr.length > 0 ? arr[0] : null;
 }
 
-/** Resolve the versioned URL for a dataset resource by name */
 async function resolveUrl(dataset, resourceName) {
   const indexUrl = `${INDEX_BASE}/${dataset}/index.json`;
   const index = await fetchJson(indexUrl);
@@ -152,17 +131,23 @@ async function fetchAirplanes() {
 // ── public API ────────────────────────────────────────────────────────────────
 
 async function getSanctions() {
-  const cached = readCache();
-  if (cached) {
-    return { records: cached.records, fromCache: true, fetchedAt: cached.fetchedAt };
+  await db.initSchema();
+
+  const lastFetchedAt = await db.getLastFetchedAt();
+  if (lastFetchedAt && Date.now() - lastFetchedAt.getTime() < CACHE_TTL_MS) {
+    const records = await db.getAllRecords();
+    return { records, fromCache: true, fetchedAt: lastFetchedAt.getTime() };
   }
 
-  console.log('Cache miss — fetching bulk data from OpenSanctions...');
+  console.log('DB cache miss — fetching bulk data from OpenSanctions...');
   const [vessels, airplanes] = await Promise.all([fetchVessels(), fetchAirplanes()]);
-  console.log(`Fetched ${vessels.length} vessels, ${airplanes.length} airplanes`);
+  console.log(`Fetched ${vessels.length} vessels, ${airplanes.length} airplanes — writing to DB...`);
 
   const records = [...vessels, ...airplanes];
-  const { fetchedAt } = writeCache(records);
+  await db.upsertRecords(records);
+  console.log('DB write complete.');
+
+  const fetchedAt = Date.now();
   return { records, fromCache: false, fetchedAt };
 }
 
